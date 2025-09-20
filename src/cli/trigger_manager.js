@@ -55,7 +55,9 @@ class TriggerManager {
             input: process.stdin,
             output: process.stdout,
             prompt: chalk.blue('trigger> '),
-            completer: this.completer.bind(this)
+            completer: this.completer.bind(this),
+            terminal: true,
+            historySize: 100
         });
 
         this.rl.prompt();
@@ -93,7 +95,7 @@ class TriggerManager {
         // 根据命令提供参数补全
         const command = parts[0].toLowerCase();
         const completions = this.getTriggerCommandCompletions(command, previous, current);
-        
+
         return [completions, current];
     }
 

@@ -150,18 +150,20 @@ class REPLCLIClient {
             input: process.stdin,
             output: process.stdout,
             prompt: chalk.blue('slm> '),
-            completer: this.completer.bind(this)
+            completer: this.completer.bind(this),
+            terminal: true,
+            historySize: 100
         });
 
         this.rl.prompt();
 
         this.rl.on('line', async (line) => {
             const input = line.trim();
-            
+
             if (input) {
                 await this.processCommand(input);
             }
-            
+
             this.rl.prompt();
         });
 
@@ -189,7 +191,7 @@ class REPLCLIClient {
         // 根据命令提供参数补全
         const command = parts[0].toLowerCase();
         const completions = this.getCommandCompletions(command, previous, current);
-        
+
         return [completions, current];
     }
 
@@ -501,7 +503,10 @@ class REPLCLIClient {
         const triggerRL = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
-            prompt: chalk.blue('trigger> ')
+            prompt: chalk.blue('trigger> '),
+            completer: this.triggerManager.completer.bind(this.triggerManager),
+            terminal: true,
+            historySize: 100
         });
 
         // 临时替换当前的readline接口
