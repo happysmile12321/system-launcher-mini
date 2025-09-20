@@ -16,6 +16,7 @@
     "repl": "node src/cli/repl_client.js",
     "demo": "node example/server_client_demo.js",
     "usage": "node example/usage_example.js",
+    "repl-demo": "node example/repl_demo.js",
     "dev:server": "nodemon --watch src/server --watch src/core --watch src/infra --exec \"node src/server/start_server.js\"",
     "dev:client": "nodemon --watch src/client --watch src/cli --exec \"node src/cli/index.js\"",
     "dev:demo": "nodemon --watch src --watch example --exec \"node example/server_client_demo.js\"",

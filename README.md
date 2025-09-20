@@ -34,6 +34,9 @@ npm run client
 
 # 启动智能CLI客户端（推荐，自动重试连接）
 npm run smart-client
+
+# 启动REPL客户端（交互式命令行）
+npm run repl
 ```
 
 #### 开发模式（使用 nodemon）
@@ -149,6 +152,9 @@ npm run test:quick
 
 # 智能测试：启动Server + 智能Client（推荐）
 npm run test:smart
+
+# REPL测试：启动Server + REPL Client（交互式）
+npm run test:repl
 
 # 完整测试
 npm run test:server
