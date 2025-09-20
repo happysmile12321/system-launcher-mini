@@ -8,6 +8,7 @@
 import chalk from 'chalk';
 import { ClientAPI } from '../client/client_api.js';
 import readline from 'readline';
+import TriggerManager from './trigger_manager.js';
 
 /**
  * REPL CLI客户端类
@@ -28,6 +29,7 @@ class REPLCLIClient {
         this.connected = false;
         this.rl = null;
         this.commands = new Map();
+        this.triggerManager = null;
         this.initializeCommands();
     }
 
@@ -54,6 +56,9 @@ class REPLCLIClient {
         // 系统状态命令
         this.commands.set('status', this.getSystemStatus.bind(this));
         this.commands.set('info', this.getServerInfo.bind(this));
+
+        // 触发器管理命令
+        this.commands.set('trigger', this.triggerCommand.bind(this));
 
         // 帮助命令
         this.commands.set('help', this.showHelp.bind(this));
@@ -87,16 +92,16 @@ class REPLCLIClient {
         for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
             try {
                 console.log(chalk.gray(`  尝试连接 (${attempt}/${this.config.maxRetries})...`));
-                
+
                 await this.clientAPI.connect();
                 this.connected = true;
-                
+
                 console.log(chalk.green('✅ 连接到RPC服务器成功'));
                 return;
 
             } catch (error) {
                 console.log(chalk.gray(`  ❌ 连接失败: ${error.message}`));
-                
+
                 if (attempt < this.config.maxRetries) {
                     console.log(chalk.gray(`  ⏳ 等待 ${this.config.retryDelay}ms 后重试...`));
                     await new Promise(resolve => setTimeout(resolve, this.config.retryDelay));
@@ -110,18 +115,18 @@ class REPLCLIClient {
     async printSystemStatus() {
         try {
             const serverInfo = await this.clientAPI.getServerInfo();
-            
+
             console.log(chalk.cyan('\n📊 系统状态:'));
             console.log(chalk.gray(`- 连接状态: ${this.connected ? '✅ 已连接' : '❌ 未连接'}`));
             console.log(chalk.gray(`- 服务器状态: ${serverInfo.status.initialized ? '✅ 已初始化' : '❌ 未初始化'}`));
             console.log(chalk.gray(`- 文件服务数量: ${serverInfo.fileSystems.length}`));
             console.log(chalk.gray(`- 核心组件数量: ${serverInfo.components.length}`));
-            
+
             console.log(chalk.cyan('\n🗂️ 可用文件服务:'));
             serverInfo.fileSystems.forEach(fs => {
                 console.log(chalk.gray(`  - ${fs.name} (${fs.type})`));
             });
-            
+
             console.log(chalk.cyan('\n🔧 可用核心组件:'));
             serverInfo.components.forEach(component => {
                 console.log(chalk.gray(`  - ${component}`));
@@ -138,12 +143,14 @@ class REPLCLIClient {
 
     startREPL() {
         console.log(chalk.cyan('\n🎯 进入REPL模式'));
-        console.log(chalk.gray('输入 "help" 查看可用命令，输入 "exit" 退出\n'));
+        console.log(chalk.gray('输入 "help" 查看可用命令，输入 "exit" 退出'));
+        console.log(chalk.gray('💡 提示: 按 Tab 键可以自动补全命令和参数\n'));
 
         this.rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
-            prompt: chalk.blue('slm> ')
+            prompt: chalk.blue('slm> '),
+            completer: this.completer.bind(this)
         });
 
         this.rl.prompt();
@@ -162,6 +169,91 @@ class REPLCLIClient {
             console.log(chalk.yellow('\n👋 再见!'));
             this.cleanup();
         });
+    }
+
+    /**
+     * 自动补全函数
+     */
+    completer(line) {
+        const parts = line.trim().split(' ');
+        const current = parts[parts.length - 1];
+        const previous = parts[parts.length - 2];
+
+        // 如果是第一个参数（命令名）
+        if (parts.length === 1) {
+            const commands = Array.from(this.commands.keys());
+            const matches = commands.filter(cmd => cmd.startsWith(current.toLowerCase()));
+            return [matches.length ? matches : commands, current];
+        }
+
+        // 根据命令提供参数补全
+        const command = parts[0].toLowerCase();
+        const completions = this.getCommandCompletions(command, previous, current);
+        
+        return [completions, current];
+    }
+
+    /**
+     * 获取命令的补全选项
+     */
+    getCommandCompletions(command, previous, current) {
+        const completions = [];
+
+        switch (command) {
+            case 'create':
+            case 'read':
+            case 'update':
+            case 'delete':
+            case 'exists':
+            case 'info':
+                if (previous === command) {
+                    // 文件路径补全
+                    completions.push('test.txt', 'data.json', 'config.yaml', 'README.md');
+                } else if (previous && previous !== command) {
+                    // 文件系统名称补全
+                    completions.push('local', 'git', 'memory');
+                }
+                break;
+
+            case 'list':
+                if (previous === 'list') {
+                    completions.push('local', 'git', 'memory');
+                }
+                break;
+
+            case 'stats':
+                if (previous === 'stats') {
+                    completions.push('local', 'git', 'memory');
+                }
+                break;
+
+            case 'container':
+                if (previous === 'container') {
+                    completions.push('list', 'start', 'stop', 'remove');
+                } else if (previous === 'start' || previous === 'stop' || previous === 'remove') {
+                    completions.push('container-1', 'container-2', 'container-3');
+                }
+                break;
+
+            case 'script':
+                if (previous === 'script') {
+                    completions.push('list', 'execute');
+                } else if (previous === 'execute') {
+                    completions.push('hello.sh', 'backup.sh', 'deploy.sh');
+                }
+                break;
+
+            case 'trigger':
+                // trigger 命令会进入子模式，这里不需要补全
+                break;
+
+            default:
+                // 通用命令补全
+                const commands = Array.from(this.commands.keys());
+                completions.push(...commands.filter(cmd => cmd.startsWith(current.toLowerCase())));
+        }
+
+        return completions.filter(comp => comp.startsWith(current));
     }
 
     async processCommand(input) {
@@ -188,7 +280,7 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: create <path> <data> [fsName]'));
             return;
         }
-        
+
         const [path, data, fsName = 'local'] = args;
         const result = await this.clientAPI.createFile(path, data, fsName);
         console.log(chalk.green(`✅ 文件创建${result ? '成功' : '失败'}: ${path}`));
@@ -199,10 +291,10 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: read <path> [fsName]'));
             return;
         }
-        
+
         const [path, fsName = 'local'] = args;
         const content = await this.clientAPI.readFile(path, fsName);
-        
+
         if (content !== null) {
             console.log(chalk.green(`✅ 文件内容 (${path}):`));
             console.log(chalk.gray(content));
@@ -216,7 +308,7 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: update <path> <data> [fsName]'));
             return;
         }
-        
+
         const [path, data, fsName = 'local'] = args;
         const result = await this.clientAPI.updateFile(path, data, fsName);
         console.log(chalk.green(`✅ 文件更新${result ? '成功' : '失败'}: ${path}`));
@@ -227,7 +319,7 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: delete <path> [fsName]'));
             return;
         }
-        
+
         const [path, fsName = 'local'] = args;
         const result = await this.clientAPI.deleteFile(path, fsName);
         console.log(chalk.green(`✅ 文件删除${result ? '成功' : '失败'}: ${path}`));
@@ -238,7 +330,7 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: exists <path> [fsName]'));
             return;
         }
-        
+
         const [path, fsName = 'local'] = args;
         const exists = await this.clientAPI.fileExists(path, fsName);
         console.log(chalk.green(`📁 文件 ${exists ? '存在' : '不存在'}: ${path}`));
@@ -247,7 +339,7 @@ class REPLCLIClient {
     async listFiles(args) {
         const [fsName = 'local'] = args;
         const files = await this.clientAPI.listFiles(fsName);
-        
+
         console.log(chalk.green(`📁 文件列表 (${fsName}):`));
         if (files.length > 0) {
             files.forEach(file => {
@@ -263,10 +355,10 @@ class REPLCLIClient {
             console.log(chalk.red('❌ 用法: info <path> [fsName]'));
             return;
         }
-        
+
         const [path, fsName = 'local'] = args;
         const info = await this.clientAPI.getFileInfo(path, fsName);
-        
+
         if (info) {
             console.log(chalk.green(`📄 文件信息 (${path}):`));
             console.log(chalk.gray(`  大小: ${info.size} 字节`));
@@ -280,7 +372,7 @@ class REPLCLIClient {
     async getFSStats(args) {
         const [fsName = 'local'] = args;
         const stats = await this.clientAPI.getFSStats(fsName);
-        
+
         console.log(chalk.green(`📊 文件系统统计 (${fsName}):`));
         console.log(chalk.gray(`  文件数量: ${stats.fileCount}`));
         console.log(chalk.gray(`  总大小: ${stats.totalSize} 字节`));
@@ -395,6 +487,53 @@ class REPLCLIClient {
         console.log(chalk.gray(`  连接地址: ${info.client.config.host}:${info.client.config.port}`));
     }
 
+    // ========== 触发器管理命令 ==========
+
+    async triggerCommand(args) {
+        if (!this.triggerManager) {
+            this.triggerManager = new TriggerManager(this.clientAPI);
+        }
+
+        console.log(chalk.blue('🎯 进入Trigger管理交互模式'));
+        console.log(chalk.gray('输入 "help" 查看可用命令，输入 "exit" 退出\n'));
+
+        // 创建新的readline接口用于trigger管理
+        const triggerRL = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            prompt: chalk.blue('trigger> ')
+        });
+
+        // 临时替换当前的readline接口
+        const originalRL = this.rl;
+        this.rl = triggerRL;
+
+        triggerRL.prompt();
+
+        triggerRL.on('line', async (line) => {
+            const input = line.trim();
+
+            if (input) {
+                if (input === 'exit' || input === 'quit') {
+                    console.log(chalk.yellow('👋 退出Trigger管理'));
+                    triggerRL.close();
+                    this.rl = originalRL;
+                    this.rl.prompt();
+                    return;
+                }
+
+                await this.triggerManager.processCommand(input);
+            }
+
+            triggerRL.prompt();
+        });
+
+        triggerRL.on('close', () => {
+            this.rl = originalRL;
+            this.rl.prompt();
+        });
+    }
+
     // ========== 帮助和工具命令 ==========
 
     showHelp() {
@@ -421,6 +560,9 @@ class REPLCLIClient {
         console.log(chalk.yellow('\n📊 系统状态:'));
         console.log(chalk.gray('  status                        - 获取系统状态'));
         console.log(chalk.gray('  info                          - 获取服务器信息'));
+
+        console.log(chalk.yellow('\n🎯 触发器管理:'));
+        console.log(chalk.gray('  trigger                       - 进入触发器管理交互模式'));
 
         console.log(chalk.yellow('\n🛠️ 工具命令:'));
         console.log(chalk.gray('  help                          - 显示帮助'));
