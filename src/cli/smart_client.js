@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 
+/**
+ * 智能CLI客户端
+ * 自动等待服务器启动，提供更好的用户体验
+ */
+
 import chalk from 'chalk';
 import { ClientAPI } from '../client/client_api.js';
 
 /**
- * CLI客户端
- * 作为server的客户端，通过RPC与server交互
+ * 智能CLI客户端类
  */
-class CLIClient {
+class SmartCLIClient {
     constructor(config = {}) {
         this.config = {
             serverHost: config.serverHost || 'localhost',
             serverPort: config.serverPort || 8081,
+            maxRetries: config.maxRetries || 10,
+            retryDelay: config.retryDelay || 2000,
             ...config
         };
         this.clientAPI = new ClientAPI({
@@ -23,30 +29,43 @@ class CLIClient {
 
     async start() {
         try {
-            console.log(chalk.blue('🚀 启动CLI客户端...'));
+            console.log(chalk.blue('🚀 启动智能CLI客户端...'));
 
-            // 连接到RPC服务器
-            await this.connectToServer();
+            // 智能连接到服务器
+            await this.smartConnect();
 
             console.log(chalk.green(`✅ CLI客户端启动成功!`));
-            this.printSystemStatus();
+            await this.printSystemStatus();
 
         } catch (error) {
-            console.error(chalk.red('❌ 启动失败:'), error);
+            console.error(chalk.red('❌ 启动失败:'), error.message);
             process.exit(1);
         }
     }
 
-    async connectToServer() {
-        console.log(chalk.yellow('🔄 连接到RPC服务器...'));
+    async smartConnect() {
+        console.log(chalk.yellow('🔄 智能连接到RPC服务器...'));
 
-        try {
-            await this.clientAPI.connect();
-            this.connected = true;
-            console.log(chalk.green('✅ 连接到RPC服务器成功'));
-        } catch (error) {
-            console.error(chalk.red('❌ 连接RPC服务器失败:'), error.message);
-            throw error;
+        for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+            try {
+                console.log(chalk.gray(`  尝试连接 (${attempt}/${this.config.maxRetries})...`));
+
+                await this.clientAPI.connect();
+                this.connected = true;
+
+                console.log(chalk.green('✅ 连接到RPC服务器成功'));
+                return;
+
+            } catch (error) {
+                console.log(chalk.gray(`  ❌ 连接失败: ${error.message}`));
+
+                if (attempt < this.config.maxRetries) {
+                    console.log(chalk.gray(`  ⏳ 等待 ${this.config.retryDelay}ms 后重试...`));
+                    await new Promise(resolve => setTimeout(resolve, this.config.retryDelay));
+                } else {
+                    throw new Error(`连接失败，已尝试 ${this.config.maxRetries} 次`);
+                }
+            }
         }
     }
 
@@ -74,9 +93,20 @@ class CLIClient {
             console.log(chalk.gray(`  - 服务器地址: ${serverInfo.client.config.host}:${serverInfo.client.config.port}`));
             console.log(chalk.gray(`  - 连接状态: ${serverInfo.client.connected ? '✅ 已连接' : '❌ 未连接'}`));
 
+            // 显示使用提示
+            this.showUsageTips();
+
         } catch (error) {
             console.error(chalk.red('❌ 获取系统状态失败:'), error.message);
         }
+    }
+
+    showUsageTips() {
+        console.log(chalk.cyan('\n💡 使用提示:'));
+        console.log(chalk.gray('  - 按 Ctrl+C 退出客户端'));
+        console.log(chalk.gray('  - 服务器会自动处理所有RPC请求'));
+        console.log(chalk.gray('  - 支持文件操作、容器管理、脚本执行等功能'));
+        console.log(chalk.gray('  - 查看 README.md 了解更多使用方法'));
     }
 
     async stop() {
@@ -116,34 +146,6 @@ class CLIClient {
         return await this.clientAPI.listFiles(fsName);
     }
 
-    // ========== 容器组件便捷方法 ==========
-
-    async createContainer(config) {
-        return await this.clientAPI.createContainer(config);
-    }
-
-    async startContainer(containerId) {
-        return await this.clientAPI.startContainer(containerId);
-    }
-
-    async stopContainer(containerId) {
-        return await this.clientAPI.stopContainer(containerId);
-    }
-
-    async listContainers() {
-        return await this.clientAPI.listContainers();
-    }
-
-    // ========== 脚本组件便捷方法 ==========
-
-    async executeScript(scriptPath, args = {}) {
-        return await this.clientAPI.executeScript(scriptPath, args);
-    }
-
-    async listScripts() {
-        return await this.clientAPI.listScripts();
-    }
-
     // ========== 系统状态便捷方法 ==========
 
     async getSystemStatus() {
@@ -156,8 +158,9 @@ class CLIClient {
 }
 
 async function main() {
-    const client = new CLIClient();
+    const client = new SmartCLIClient();
 
+    // 设置优雅关闭
     process.on('SIGINT', async () => {
         await client.stop();
         process.exit(0);
@@ -178,4 +181,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     });
 }
 
-export default CLIClient;
+export default SmartCLIClient;
