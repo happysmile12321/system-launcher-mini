@@ -1,0 +1,28 @@
+{
+  "name": "system-launcher-mini",
+  "version": "1.0.0",
+  "description": "A simplified system launcher with core components management",
+  "type": "module",
+  "main": "src/cli/index.js",
+  "bin": {
+    "slm": "./src/cli/index.js"
+  },
+  "scripts": {
+    "start": "node src/cli/index.js",
+    "dev": "node src/cli/index.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "cli",
+    "system",
+    "launcher",
+    "core",
+    "components"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "express": "^4.19.2"
+  }
+}
